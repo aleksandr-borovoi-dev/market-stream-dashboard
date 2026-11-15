@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "start",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "typescript",
+        "pattern": "$tsc",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Building|Changes detected",
+          "endsPattern": "Application bundle generation (complete|failed)"
+        }
+      }
+    },
+    {
+      "type": "npm",
+      "script": "check",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}
