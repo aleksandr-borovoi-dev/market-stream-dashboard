@@ -3,7 +3,7 @@
   "framework": "angular",
   "ignoreCommand": "exit 1",
   "installCommand": "npm install --global npm@11.12.1 && npm ci",
-  "buildCommand": "npm run check",
+  "buildCommand": "npm run format:check -- '!vercel.json' && npm run verify",
   "outputDirectory": "dist/market-stream-dashboard/browser",
   "routes": [{ "handle": "filesystem" }, { "src": "^/(market|setup)/?$", "dest": "/index.html" }]
 }

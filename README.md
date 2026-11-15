@@ -19,6 +19,7 @@ Open http://localhost:4200.
 
 ```sh
 npm run check          # Formatting, lint, TypeScript and production build
+npm run verify         # Lint, TypeScript and production build
 npm run lint
 npm run typecheck
 npm run format:check
@@ -32,4 +33,4 @@ The production output is written to `dist/market-stream-dashboard/browser`.
 
 Pushes to `main` run the `Checks` workflow in GitHub Actions. It uses the Node version from `.nvmrc`, npm 11.12.1, a clean dependency installation, and `npm run check`.
 
-Vercel Hobby deploys the connected repository's `main` branch. The versioned `vercel.json` runs the same checks before publishing the production output, so a failed check stops that deployment. The two page routes load `index.html`; static files are served directly, and missing assets return 404.
+Vercel Hobby deploys the connected repository's `main` branch. Its build checks formatting and runs `npm run verify` before publishing, so a failed application check stops that deployment. Vercel's processed `vercel.json` is excluded from formatting during deployment; the original file is still checked locally and in GitHub Actions. The two page routes load `index.html`; static files are served directly, and missing assets return 404.
