@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "angular",
+  "ignoreCommand": "exit 1",
+  "installCommand": "npm install --global npm@11.12.1 && npm ci",
+  "buildCommand": "npm run check",
+  "outputDirectory": "dist/market-stream-dashboard/browser",
+  "routes": [{ "handle": "filesystem" }, { "src": "^/(market|setup)/?$", "dest": "/index.html" }]
+}
