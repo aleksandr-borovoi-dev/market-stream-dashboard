@@ -1,130 +1,178 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PRODUCER_SETTINGS,
+  PRODUCER_SETTING_LIMITS,
   SettingIssue,
   requestedUpdatesPerSecond,
   validateProducerSettings,
-  type ProducerSettings,
 } from './contracts';
+import type { ProducerSettings, SettingsErrors } from './contracts';
 
-const fieldCases: readonly {
-  field: keyof ProducerSettings;
-  minimum: number;
-  maximum: number;
-}[] = [
-  { field: 'instrumentCount', minimum: 1, maximum: 50 },
-  { field: 'updatesPerBatch', minimum: 1, maximum: 1_000 },
-  { field: 'intervalMs', minimum: 50, maximum: 2_000 },
+const defaults: ProducerSettings = { instrumentCount: 5, updatesPerBatch: 100, intervalMs: 500 };
+
+const fields: readonly (keyof ProducerSettings)[] = [
+  'instrumentCount',
+  'updatesPerBatch',
+  'intervalMs',
 ];
 
+function expectInvalid(input: unknown, errors: SettingsErrors): void {
+  const result = validateProducerSettings(input);
+  expect(result).toMatchObject({ valid: false });
+  if (result.valid) {
+    throw new Error('Expected invalid settings');
+  }
+  expect(result.errors).toEqual(errors);
+}
+
 describe('producer settings', () => {
-  it('accepts the assignment defaults', () => {
-    expect(validateProducerSettings(DEFAULT_PRODUCER_SETTINGS)).toEqual({
-      valid: true,
-      settings: { instrumentCount: 5, updatesPerBatch: 100, intervalMs: 500 },
+  it('exposes the assignment defaults and inclusive limits', () => {
+    expect(DEFAULT_PRODUCER_SETTINGS).toEqual(defaults);
+    expect(PRODUCER_SETTING_LIMITS).toEqual({
+      instrumentCount: { minimum: 1, maximum: 50 },
+      updatesPerBatch: { minimum: 1, maximum: 1000 },
+      intervalMs: { minimum: 50, maximum: 2000 },
     });
+    expect(validateProducerSettings(defaults)).toEqual({ valid: true, settings: defaults });
   });
 
-  describe.each(fieldCases)('$field', ({ field, minimum, maximum }) => {
-    it.each([minimum, maximum])('accepts the inclusive boundary %s', (value) => {
-      const input = { ...DEFAULT_PRODUCER_SETTINGS, [field]: value };
-
-      expect(validateProducerSettings(input)).toEqual({ valid: true, settings: input });
-    });
-
-    it.each([minimum - 1, maximum + 1])('rejects the out-of-range value %s', (value) => {
-      expect(validateProducerSettings({ ...DEFAULT_PRODUCER_SETTINGS, [field]: value })).toEqual({
-        valid: false,
-        errors: { [field]: SettingIssue.Range },
-      });
-    });
-
-    it('rejects fractions even inside the allowed range', () => {
-      expect(
-        validateProducerSettings({ ...DEFAULT_PRODUCER_SETTINGS, [field]: minimum + 0.5 }),
-      ).toEqual({ valid: false, errors: { [field]: SettingIssue.Integer } });
-    });
-
-    it.each([
-      { label: 'undefined', value: undefined },
-      { label: 'null', value: null },
-      { label: 'empty text', value: '' },
-      { label: 'whitespace', value: '  ' },
-    ])('requires a value for $label', ({ value }) => {
-      expect(validateProducerSettings({ ...DEFAULT_PRODUCER_SETTINGS, [field]: value })).toEqual({
-        valid: false,
-        errors: { [field]: SettingIssue.Required },
-      });
-    });
-
-    it.each([
-      { label: 'NaN', value: Number.NaN },
-      { label: 'positive infinity', value: Number.POSITIVE_INFINITY },
-      { label: 'negative infinity', value: Number.NEGATIVE_INFINITY },
-      { label: 'numeric text', value: String(minimum) },
-      { label: 'a boolean', value: true },
-    ])('rejects $label instead of coercing it', ({ value }) => {
-      expect(validateProducerSettings({ ...DEFAULT_PRODUCER_SETTINGS, [field]: value })).toEqual({
-        valid: false,
-        errors: { [field]: SettingIssue.Integer },
-      });
-    });
+  it('accepts all combinations of inclusive lower and upper bounds', () => {
+    for (const instrumentCount of [1, 50]) {
+      for (const updatesPerBatch of [1, 1000]) {
+        for (const intervalMs of [50, 2000]) {
+          const settings = { instrumentCount, updatesPerBatch, intervalMs };
+          expect(validateProducerSettings(settings)).toEqual({ valid: true, settings });
+        }
+      }
+    }
   });
 
-  it('reports all invalid fields together', () => {
-    expect(
-      validateProducerSettings({ instrumentCount: 0, updatesPerBatch: 1_001, intervalMs: 50.5 }),
-    ).toEqual({
-      valid: false,
-      errors: {
-        instrumentCount: SettingIssue.Range,
-        updatesPerBatch: SettingIssue.Range,
-        intervalMs: SettingIssue.Integer,
+  it('reports required fields for missing and blank values', () => {
+    for (const field of fields) {
+      const missing: Partial<ProducerSettings> = { ...defaults };
+      delete missing[field];
+      expectInvalid(missing, { [field]: SettingIssue.Required });
+      for (const value of [undefined, null, '', ' \t\n ']) {
+        expectInvalid({ ...defaults, [field]: value }, { [field]: SettingIssue.Required });
+      }
+    }
+  });
+
+  it('requires finite integers without coercing other values', () => {
+    for (const field of fields) {
+      for (const value of [
+        1.5,
+        NaN,
+        Infinity,
+        -Infinity,
+        '5',
+        'invalid',
+        true,
+        false,
+        {},
+        [],
+        5n,
+        Symbol('value'),
+      ]) {
+        expectInvalid({ ...defaults, [field]: value }, { [field]: SettingIssue.Integer });
+      }
+    }
+  });
+
+  it('reports range errors only after the integer requirement is met', () => {
+    const bounds: Record<keyof ProducerSettings, readonly [number, number]> = {
+      instrumentCount: [1, 50],
+      updatesPerBatch: [1, 1000],
+      intervalMs: [50, 2000],
+    };
+    for (const field of fields) {
+      const [minimum, maximum] = bounds[field];
+      for (const value of [minimum - 1, maximum + 1, -100]) {
+        expectInvalid({ ...defaults, [field]: value }, { [field]: SettingIssue.Range });
+      }
+      for (const value of [minimum - 0.5, maximum + 0.5]) {
+        expectInvalid({ ...defaults, [field]: value }, { [field]: SettingIssue.Integer });
+      }
+    }
+  });
+
+  it('collects every invalid field and omits valid fields from errors', () => {
+    expectInvalid(
+      { instrumentCount: null, updatesPerBatch: '100', intervalMs: 2001 },
+      {
+        instrumentCount: SettingIssue.Required,
+        updatesPerBatch: SettingIssue.Integer,
+        intervalMs: SettingIssue.Range,
       },
-    });
+    );
+    expectInvalid(
+      { ...defaults, instrumentCount: 0, intervalMs: undefined },
+      {
+        instrumentCount: SettingIssue.Range,
+        intervalMs: SettingIssue.Required,
+      },
+    );
   });
 
-  it('reports a missing field without rejecting valid fields', () => {
-    expect(validateProducerSettings({ instrumentCount: 5, updatesPerBatch: 100 })).toEqual({
-      valid: false,
-      errors: { intervalMs: SettingIssue.Required },
-    });
-  });
-
-  it.each([undefined, null, [], 42, 'settings'])('rejects a non-settings input %j', (input) => {
-    expect(validateProducerSettings(input)).toEqual({
-      valid: false,
-      errors: {
+  it('rejects non-settings inputs without throwing', () => {
+    for (const input of [
+      undefined,
+      null,
+      '',
+      'settings',
+      5,
+      NaN,
+      true,
+      false,
+      [],
+      {},
+      5n,
+      Symbol('settings'),
+    ]) {
+      const result = validateProducerSettings(input);
+      expect(result.valid).toBe(false);
+    }
+    expectInvalid(
+      {},
+      {
         instrumentCount: SettingIssue.Required,
         updatesPerBatch: SettingIssue.Required,
         intervalMs: SettingIssue.Required,
       },
-    });
+    );
   });
 
-  it('keeps validated settings separate from subsequent draft edits', () => {
-    const draft = { ...DEFAULT_PRODUCER_SETTINGS };
-    const result = validateProducerSettings(draft);
+  it('returns settings detached from subsequent edits to the input', () => {
+    const input = { ...defaults };
+    const result = validateProducerSettings(input);
+    expect(result.valid).toBe(true);
     if (!result.valid) {
-      throw new Error('Expected the default draft to be valid.');
+      throw new Error('Expected valid settings');
     }
-
-    draft.instrumentCount = 17;
-    draft.updatesPerBatch = 250;
-    draft.intervalMs = 750;
-
-    expect(result.settings).toEqual({ instrumentCount: 5, updatesPerBatch: 100, intervalMs: 500 });
+    expect(result.settings).not.toBe(input);
+    input.instrumentCount = 50;
+    input.updatesPerBatch = 1000;
+    input.intervalMs = 2000;
+    expect(result.settings).toEqual(defaults);
   });
 });
 
-describe('requested update rate', () => {
-  it.each([1, 5, 50])('is 200 updates per second across %s instruments', (instrumentCount) => {
-    expect(requestedUpdatesPerSecond({ ...DEFAULT_PRODUCER_SETTINGS, instrumentCount })).toBe(200);
+describe('requested updates per second', () => {
+  it('calculates the total nominal rate independently of instrument count', () => {
+    for (const instrumentCount of [1, 5, 50]) {
+      expect(requestedUpdatesPerSecond({ ...defaults, instrumentCount })).toBe(200);
+    }
   });
 
-  it('reaches 20,000 updates per second at the maximum batch size and minimum interval', () => {
+  it('supports fractional rates and the fastest allowed configuration', () => {
     expect(
-      requestedUpdatesPerSecond({ instrumentCount: 50, updatesPerBatch: 1_000, intervalMs: 50 }),
-    ).toBe(20_000);
+      requestedUpdatesPerSecond({ instrumentCount: 1, updatesPerBatch: 1, intervalMs: 2000 }),
+    ).toBe(0.5);
+    expect(
+      requestedUpdatesPerSecond({ instrumentCount: 50, updatesPerBatch: 1000, intervalMs: 50 }),
+    ).toBe(20000);
+    expect(
+      requestedUpdatesPerSecond({ instrumentCount: 5, updatesPerBatch: 1, intervalMs: 333 }),
+    ).toBeCloseTo(1000 / 333, 12);
   });
 });

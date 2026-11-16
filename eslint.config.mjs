@@ -37,6 +37,13 @@ export default defineConfig([
     },
   },
   {
+    files: ['tests/**/*.mjs'],
+    extends: [eslint.configs.recommended],
+    languageOptions: {
+      globals: { WebAssembly: 'readonly', URL: 'readonly' },
+    },
+  },
+  {
     files: ['**/*.html'],
     extends: [angular.configs.templateRecommended, angular.configs.templateAccessibility],
     rules: {},

@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/assemblyscript/std/assembly.schema.json",
+  "entries": ["assembly/producer.ts"],
+  "options": {
+    "runtime": "stub",
+    "initialMemory": 1,
+    "maximumMemory": 1
+  },
+  "targets": {
+    "release": {
+      "outFile": "public/market-stream.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 1
+    }
+  }
+}

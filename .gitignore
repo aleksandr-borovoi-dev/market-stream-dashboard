@@ -5,6 +5,7 @@
 /tmp
 /out-tsc
 /bazel-out
+/public/market-stream.wasm
 
 # Node
 /node_modules

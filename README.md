@@ -4,7 +4,7 @@ Project for the Realtime Fintech Dashboard assignment: an Angular application wi
 
 The original requirements are in [Senior Frontend Developer Task.docx](docs/Senior%20Frontend%20Developer%20Task.docx).
 
-The current version contains the application shell, simulation contracts, settings validation and development checks. The `/market` and `/setup` routes show the shell until their pages are implemented. The Wasm generator and Worker are not implemented yet.
+The current version contains the application shell, simulation contracts, settings validation and a seeded AssemblyScript producer compiled to WebAssembly. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker and its connection to the UI are not implemented yet.
 
 Live demo: [market-stream-dashboard.vercel.app](https://market-stream-dashboard.vercel.app).
 
@@ -20,16 +20,20 @@ Open http://localhost:4200.
 ```sh
 npm run check          # Formatting, lint, TypeScript, unit tests and production build
 npm run verify         # Lint, TypeScript, unit tests and production build
-npm test               # Run unit tests once
-npm run test:watch
+npm test               # Compile and test Wasm, then run TypeScript unit tests
+npm run test:wasm      # Compile and test the real Wasm module
+npm run test:watch     # Watch TypeScript unit tests
 npm run lint
 npm run typecheck
 npm run format:check
 npm run format        # Apply formatting
 npm run build
+npm run build:wasm     # Compile assembly/producer.ts to public/market-stream.wasm
 ```
 
-Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Unit tests are part of `verify`, so they also run in GitHub Actions and the Vercel build.
+Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build.
+
+`start`, `build` and `watch` compile Wasm before starting Angular. After editing AssemblyScript during a running development session, run `npm run build:wasm` again. The generated `.wasm` is ignored by Git and copied from `public/` into the Angular build; only its source and compiler configuration are committed.
 
 The production output is written to `dist/market-stream-dashboard/browser`.
 
@@ -55,9 +59,9 @@ The message types define these lifecycle rules for the upcoming Worker and store
 
 ### Worker and Wasm
 
-The Wasm module exposes `memory`, `reset(instrumentCount, seed)` and `writeBatch(updateCount)`. Reset sets the starting prices for the configured instruments and restarts the random sequence. Writing a batch returns a byte offset to exactly the requested number of records in a reusable module-owned buffer. The module and its Worker reader will be built together, so the contract has no separate version export. Each record holds a trade and its quote.
+The Wasm module exposes `memory`, `reset(instrumentCount, seed)` and `writeBatch(updateCount)`. Reset sets the starting prices for the configured instruments and restarts the random sequence. Writing a batch returns a byte offset to exactly the requested number of records in a reusable module-owned buffer. The module and its Worker reader are built from the same project, so the contract has no separate version export. Each record holds a trade and its quote. Calls before reset, instrument counts outside 1–50 and batch sizes outside 1–1000 trap without changing an active run. Counts enter Wasm as `f64` and are checked before conversion to integers, so fractions, NaN, infinities and oversized numbers cannot silently become valid counts. The caller must provide numeric values and an unsigned 32-bit seed.
 
-Records contain seven unsigned 32-bit integers in [little-endian memory](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory/buffer). The layout and capacity constants are shared with the future AssemblyScript implementation.
+Records contain seven unsigned 32-bit integers in [little-endian memory](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory/buffer). The layout and capacity constants are shared with the AssemblyScript implementation.
 
 | Byte offset | Field                                           |
 | ----------- | ----------------------------------------------- |
@@ -69,4 +73,12 @@ Records contain seven unsigned 32-bit integers in [little-endian memory](https:/
 | 20          | Bid quantity                                    |
 | 24          | Ask quantity                                    |
 
-Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The Worker reads the returned records before the next module call and obtains a fresh view after each call. The memory stays inside the Worker; the UI receives accumulated snapshots. Generator code, allocation behavior and the compiled ABI will be verified when the Wasm implementation is added.
+Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The upcoming Worker must read the returned records before the next module call and obtain a fresh view after each call. It will keep the module's memory private and send accumulated snapshots to the UI.
+
+### Producer model and memory
+
+`assembly/producer.ts` uses a 32-bit linear congruential generator: `state = 1664525 * state + 1013904223 (mod 2^32)`. These standard coefficients come from [Numerical Recipes in C, §7.1, equation 7.1.6](https://library.sciencemadness.org/lanl1_a/lib-www/numerica/c7-1.pdf#page=10). Seed zero is used directly. Bounded random values use the upper 32 bits of `u64(state) * limit`, avoiding selection by the weak low bits of the LCG state. Resetting to the same instrument count and seed repeats the stream; splitting calls into smaller batches preserves the exact sequence. Random values and all price-generation logic execute inside Wasm, with no host imports.
+
+Instrument `i` starts with a quote midpoint of `10000 + i * 500` cents. Every update selects an instrument, moves its previous midpoint by −2 to +2 cents and clamps it to 100–1,000,000 cents. A half-spread of 1–3 cents places bid below and ask above the midpoint, producing spreads of 2, 4 or 6 cents. Trade price is that update's bid or ask, trade quantity is 1–100, and each book quantity is 0–1000. These fixed constants define a simple demonstration model; the assignment requires the trading invariants rather than these specific values. They are not additional user settings.
+
+The module reserves 200 bytes for midpoints and 28,000 bytes for its output using AssemblyScript's static [`memory.data`](https://www.assemblyscript.org/stdlib/globals.html#memory) buffers. There are no per-call object or array allocations. `asconfig.json` selects the [`stub` runtime](https://www.assemblyscript.org/runtime.html#variants) and fixes initial and maximum memory to one 64 KiB page. Producer tests check the assignment's trading rules and the public ABI, including replay, batch segmentation, exact-length writes and rejected-call atomicity. Resource checks cover uninterrupted maximum-size batches and 65,537 reset-and-generate cycles with an unchanged output offset and memory buffer.
