@@ -4,7 +4,7 @@ Project for the Realtime Fintech Dashboard assignment: an Angular application wi
 
 The original requirements are in [Senior Frontend Developer Task.docx](docs/Senior%20Frontend%20Developer%20Task.docx).
 
-The current version contains the application shell, simulation contracts, settings validation and a seeded AssemblyScript producer compiled to WebAssembly. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker and its connection to the UI are not implemented yet.
+The current version contains the application shell, simulation contracts, settings validation, cumulative metric calculations and a seeded AssemblyScript producer compiled to WebAssembly. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker and its connection to the UI are not implemented yet.
 
 Live demo: [market-stream-dashboard.vercel.app](https://market-stream-dashboard.vercel.app).
 
@@ -31,7 +31,7 @@ npm run build
 npm run build:wasm     # Compile assembly/producer.ts to public/market-stream.wasm
 ```
 
-Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build.
+Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Metric tests cover the assignment example, unavailable values, instrument isolation, immutable snapshots, large integer totals and rounding at presentation. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build.
 
 `start`, `build` and `watch` compile Wasm before starting Angular. After editing AssemblyScript during a running development session, run `npm run build:wasm` again. The generated `.wasm` is ignored by Git and copied from `public/` into the Angular build; only its source and compiler configuration are committed.
 
@@ -46,6 +46,14 @@ Vercel Hobby deploys the connected repository's `main` branch. Its build checks 
 [`packages/market-stream/contracts.ts`](packages/market-stream/contracts.ts) is the public entry point for plain TypeScript models and validation. It has no Angular or NgRx dependency and can be imported by the UI, the Worker and tests. There is no separate package build or workspace framework.
 
 Settings use numeric values: `instrumentCount` (default 5, range 1–50), `updatesPerBatch` (100, 1–1000) and `intervalMs` (500, 50–2000). Validation accepts only integers, reports errors per field, and returns a separate settings object without coercing strings. The requested rate is `updatesPerBatch * 1000 / intervalMs` across all instruments, independent of instrument count.
+
+### Market calculations
+
+`createInstrumentSnapshots(count)` initializes a run. `accumulateMarketBatch(snapshots, updates)` returns a new snapshot array, retaining each instrument's latest update and cumulative totals. Previous snapshots and inputs stay unchanged; every supplied trade counts, including identical trades. Market updates must satisfy the data contract, and an unconfigured instrument index is rejected.
+
+`deriveMarketMetrics(snapshot)` returns the five dashboard metrics. Volume and traded value use `bigint`, with quantities converted before multiplication. VWAP remains the exact `{ numeratorCents, denominator }` relation until display. Empty data produces zero volume and unavailable metrics; a zero book denominator produces unavailable imbalance.
+
+`formatUsd`, `formatVolume` and `formatImbalance` use fixed English dollar presentation. Currency rounds exact ratios to the nearest cent, with half-cent ties rounded upward. USD and volume formatting preserve large integer values; imbalance uses two decimals without percent scaling. Unavailable values display `—`. These helpers have no Angular dependency and are available through `contracts.ts`.
 
 ### Application and Worker
 

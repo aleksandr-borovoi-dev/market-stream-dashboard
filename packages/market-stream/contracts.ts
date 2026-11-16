@@ -40,3 +40,11 @@ export {
 } from './wasm-layout';
 
 export type { WasmProducerExports } from './wasm-producer';
+
+export { accumulateMarketBatch, createInstrumentSnapshots } from './instrument-snapshots';
+
+export { deriveMarketMetrics } from './market-metrics';
+
+export type { ExactPrice, MarketMetrics } from './market-metrics';
+
+export { formatImbalance, formatUsd, formatVolume } from './market-formatting';
