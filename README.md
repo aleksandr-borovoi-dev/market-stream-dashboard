@@ -4,7 +4,7 @@ Project for the Realtime Fintech Dashboard assignment: an Angular application wi
 
 The original requirements are in [Senior Frontend Developer Task.docx](docs/Senior%20Frontend%20Developer%20Task.docx).
 
-The current version contains the application shell, simulation contracts, settings validation, cumulative metric calculations and a seeded AssemblyScript producer executed inside a module Web Worker. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker is not connected to Angular state or the UI yet.
+The current version starts a seeded AssemblyScript producer inside a module Web Worker and connects it to an application-scoped NgRx feature store. The `/market` and `/setup` routes show the shell until their pages are implemented.
 
 Live demo: [market-stream-dashboard.vercel.app](https://market-stream-dashboard.vercel.app).
 
@@ -57,13 +57,15 @@ Settings use numeric values: `instrumentCount` (default 5, range 1–50), `updat
 
 ### Application and Worker
 
-The message types define these lifecycle rules for the Worker and its future application owner:
+The message types define these lifecycle rules for the Worker and the application:
 
 - `start` carries validated settings and a 32-bit seed. Every start, including Apply while paused, creates a new run with empty totals and starts generation. Draft edits do not send commands; navigation keeps the same producer owner.
 - Every command has a positive, increasing `commandId`. Each new run also gets a new `runId`. Commands and acknowledgements must match the active run; acknowledgements also match the pending command. The owner separately rejects messages from a replaced Worker instance.
 - Snapshots have an increasing `sequence` starting at 1 for each run. Older or repeated snapshots, statuses and errors from an earlier run cannot replace current state. Snapshots contain cumulative totals, so the receiver replaces them instead of adding them again.
 - Pause publishes all completed work before its acknowledgement. Resume preserves Wasm state and totals and schedules the next batch after the configured interval, without catching up for paused time. Contradictory pause/resume commands wait for the pending acknowledgement; a new start can replace a pending run.
 - Each instrument retains its latest trade and quote, cumulative volume and `sum(priceCents * tradeQuantity)`. Before its first trade, the latest update is `null` and both totals are `0n`. The two cumulative totals use `bigint`; snapshots travel by [structured clone](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), rather than JSON. No complete trade history is kept.
+
+`provideMarketStreamStore()` registers the market feature once at Angular bootstrap and dispatches Start with the default settings. `MarketStreamFacade` dispatches Apply, Pause and Resume through `MarketStreamActions`. Effects send commands through the Worker transport and convert incoming messages into outcome actions. The reducer accepts current results and replaces the cumulative snapshot. Selectors expose settings, status, the pending command, snapshots and errors as facade signals. The transport removes listeners and terminates the Worker when the application is destroyed. Store tests use a controlled Worker channel to exercise acknowledgements, stale messages, failures and cleanup.
 
 ### Worker and Wasm
 
