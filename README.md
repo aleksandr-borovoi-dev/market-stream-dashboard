@@ -4,7 +4,7 @@ Project for the Realtime Fintech Dashboard assignment: an Angular application wi
 
 The original requirements are in [Senior Frontend Developer Task.docx](docs/Senior%20Frontend%20Developer%20Task.docx).
 
-The current version contains the application shell, simulation contracts, settings validation, cumulative metric calculations and a seeded AssemblyScript producer compiled to WebAssembly. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker and its connection to the UI are not implemented yet.
+The current version contains the application shell, simulation contracts, settings validation, cumulative metric calculations and a seeded AssemblyScript producer executed inside a module Web Worker. The `/market` and `/setup` routes show the shell until their pages are implemented. The Worker is not connected to Angular state or the UI yet.
 
 Live demo: [market-stream-dashboard.vercel.app](https://market-stream-dashboard.vercel.app).
 
@@ -31,7 +31,7 @@ npm run build
 npm run build:wasm     # Compile assembly/producer.ts to public/market-stream.wasm
 ```
 
-Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Metric tests cover the assignment example, unavailable values, instrument isolation, immutable snapshots, large integer totals and rounding at presentation. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build.
+Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Metric tests cover the assignment example, unavailable values, instrument isolation, immutable snapshots, large integer totals and rounding at presentation. Worker tests use controlled clocks and loads to check pause/resume, replacement, stale commands and completions, cleanup, loading errors and memory decoding. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build. `typecheck` also checks the Worker separately with ES2022/WebWorker types, without DOM types.
 
 `start`, `build` and `watch` compile Wasm before starting Angular. After editing AssemblyScript during a running development session, run `npm run build:wasm` again. The generated `.wasm` is ignored by Git and copied from `public/` into the Angular build; only its source and compiler configuration are committed.
 
@@ -57,7 +57,7 @@ Settings use numeric values: `instrumentCount` (default 5, range 1–50), `updat
 
 ### Application and Worker
 
-The message types define these lifecycle rules for the upcoming Worker and store implementation:
+The message types define these lifecycle rules for the Worker and its future application owner:
 
 - `start` carries validated settings and a 32-bit seed. Every start, including Apply while paused, creates a new run with empty totals and starts generation. Draft edits do not send commands; navigation keeps the same producer owner.
 - Every command has a positive, increasing `commandId`. Each new run also gets a new `runId`. Commands and acknowledgements must match the active run; acknowledgements also match the pending command. The owner separately rejects messages from a replaced Worker instance.
@@ -81,7 +81,13 @@ Records contain seven unsigned 32-bit integers in [little-endian memory](https:/
 | 20          | Bid quantity                                    |
 | 24          | Ask quantity                                    |
 
-Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The upcoming Worker must read the returned records before the next module call and obtain a fresh view after each call. It will keep the module's memory private and send accumulated snapshots to the UI.
+Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The Worker reads the returned records before the next module call and obtains a fresh view after each call. It keeps the module's memory private and publishes accumulated snapshots.
+
+### Running the Worker
+
+The module Worker implementation is in `packages/market-stream/worker/`. Create one Worker with `createMarketWorker(wasmUrl)` from `packages/market-stream/create-market-worker.ts`, supplying a URL pointing to the deployed Wasm file. Retain it across navigation and terminate it when its owner is destroyed. The factory sends the URL as a private first message; subsequent messages use the public producer contract.
+
+Send the public Start/Pause/Resume commands with increasing command/run identities and consume cumulative bigint snapshots by replacement. Start resets the Wasm instance and totals. Pause publishes finished work before acknowledging; Resume waits one configured interval and preserves state without catch-up. Replacing a run aborts its pending download and ignores late completions. Initialization and generation errors produce typed failure events. Worker lifecycle, loading and decoding specs live beside the implementation; `tsconfig.worker.json` checks Worker types separately from DOM application types.
 
 ### Producer model and memory
 

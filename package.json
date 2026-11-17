@@ -11,7 +11,7 @@
     "test:wasm": "npm run build:wasm && node --test tests/wasm-producer.test.mjs",
     "test:watch": "ng test",
     "lint": "ng lint --max-warnings=0",
-    "typecheck": "tsc --project tsconfig.app.json --noEmit && tsc --project tsconfig.spec.json --noEmit",
+    "typecheck": "tsc --project tsconfig.app.json --noEmit && tsc --project tsconfig.spec.json --noEmit && tsc --project tsconfig.worker.json --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",

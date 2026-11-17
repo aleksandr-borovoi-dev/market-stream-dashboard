@@ -6,5 +6,5 @@
     "types": []
   },
   "include": ["src/**/*.ts", "packages/**/*.ts"],
-  "exclude": ["**/*.spec.ts"]
+  "exclude": ["**/*.spec.ts", "packages/market-stream/worker/market.worker.ts"]
 }

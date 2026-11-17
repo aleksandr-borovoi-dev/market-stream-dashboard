@@ -5,5 +5,6 @@
   "compilerOptions": {
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*.ts", "packages/**/*.ts"]
+  "include": ["src/**/*.ts", "packages/**/*.ts"],
+  "exclude": ["packages/market-stream/worker/market.worker.ts"]
 }
