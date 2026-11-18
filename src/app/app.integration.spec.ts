@@ -196,4 +196,35 @@ describe('Market and producer settings', () => {
     expect(worker.commands).toHaveLength(4);
     expect(createWorker).toHaveBeenCalledOnce();
   });
+
+  it('lets the user retry a Wasm timeout by clicking Apply with unchanged settings', async () => {
+    const start = sentCommand(0);
+    const message = 'Loading timed out. Open Settings and select Apply to retry.';
+    worker.receive({
+      kind: ProducerEventKind.Failed,
+      code: ProducerFailureCode.WasmInitialization,
+      runId: start.runId,
+      commandId: start.commandId,
+      message,
+    });
+    await fixture.whenStable();
+    expect(element('[role="status"]').textContent.trim()).toBe('Error');
+    expect(element('[role="alert"]').textContent).toBe(message);
+
+    await navigate('/setup');
+    element<HTMLButtonElement>('button[type="submit"]').click();
+    await fixture.whenStable();
+    const retry = sentCommand(1);
+    expect(retry.kind).toBe(ProducerCommandKind.Start);
+    expect(retry.runId).toBeGreaterThan(start.runId);
+    await navigate('/market');
+    expect(element('[role="status"]').textContent.trim()).toBe('Starting');
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+
+    acknowledge(worker, retry, ProducerMode.Running);
+    publishSnapshot(retry, 1, [19]);
+    await fixture.whenStable();
+    expect(element('[role="status"]').textContent.trim()).toBe('Running');
+    expect(volumeTexts()[0]).toBe('19');
+  });
 });

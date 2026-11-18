@@ -12,6 +12,8 @@ import {
 import type { ProducerCommand, ProducerEvent } from '../worker-protocol';
 import { readMarketBatch } from './wasm-reader';
 
+const WASM_LOAD_TIMEOUT_MS = 10_000;
+
 export interface MarketWorkerDependencies {
   load(signal: AbortSignal): Promise<WasmProducerExports>;
   publish(event: ProducerEvent): void;
@@ -156,8 +158,21 @@ export class MarketWorkerRuntime {
 
   private async initialize(run: ActiveRun, commandId: number, seed: number): Promise<void> {
     try {
-      const producer = await this.dependencies.load(run.abort.signal);
+      const { signal } = run.abort;
+      const cancelTimeout = this.dependencies.schedule(() => {
+        if (this.active !== run || run.producer) return;
+        this.failRun(
+          run,
+          ProducerFailureCode.WasmInitialization,
+          `Loading timed out after ${WASM_LOAD_TIMEOUT_MS / 1000} seconds. Open Settings and select Apply to retry.`,
+          commandId,
+        );
+      }, WASM_LOAD_TIMEOUT_MS);
+      signal.addEventListener('abort', cancelTimeout, { once: true });
+      const producer = await this.dependencies.load(signal);
       if (this.active !== run) return;
+      signal.removeEventListener('abort', cancelTimeout);
+      cancelTimeout();
       producer.reset(run.settings.instrumentCount, seed);
       run.producer = producer;
       this.acknowledge(run, commandId);

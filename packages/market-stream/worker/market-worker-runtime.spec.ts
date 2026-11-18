@@ -117,6 +117,45 @@ describe('MarketWorkerRuntime', () => {
     expect(producer.writeBatch).toHaveBeenCalledExactlyOnceWith(2);
   });
 
+  it('aborts a stalled Wasm load at 10 seconds and keeps its late completion out of the next run', async () => {
+    const stalled = deferred<WasmProducerExports>();
+    const producer = fixtureProducer();
+    const load = vi
+      .fn<MarketWorkerDependencies['load']>()
+      .mockReturnValueOnce(stalled.promise)
+      .mockResolvedValueOnce(producer);
+    const { runtime, events, signals } = harness(load);
+    start(runtime);
+    vi.advanceTimersByTime(9_999);
+    expect(events).toEqual([]);
+    expect(signals[0].aborted).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(signals[0].aborted).toBe(true);
+    expect(events).toEqual([
+      {
+        kind: ProducerEventKind.Failed,
+        code: ProducerFailureCode.WasmInitialization,
+        runId: 1,
+        commandId: 1,
+        message: expect.stringMatching(/timed out after 10 seconds.*Settings.*Apply/i),
+      },
+    ]);
+
+    start(runtime, 2, 2);
+    stalled.resolve(producer);
+    await vi.advanceTimersByTimeAsync(settings.intervalMs);
+    expect(producer.reset).toHaveBeenCalledOnce();
+    expect(events.slice(1)).toEqual([
+      expect.objectContaining({
+        kind: ProducerEventKind.Acknowledged,
+        runId: 2,
+        mode: ProducerMode.Running,
+      }),
+      expect.objectContaining({ kind: ProducerEventKind.Snapshot, runId: 2, sequence: 1 }),
+    ]);
+  });
+
   it('publishes exact cumulative totals for every trade and leaves untouched instruments empty', async () => {
     const producer = fixtureProducer();
     const { runtime, events } = harness(async () => producer);
@@ -166,6 +205,7 @@ describe('MarketWorkerRuntime', () => {
     start(runtime);
     await Promise.resolve();
     vi.advanceTimersByTime(50);
+    const prePauseTick = scheduled[scheduled.length - 1];
     runtime.receive({
       kind: ProducerCommandKind.Pause,
       runId: 1,
@@ -199,7 +239,7 @@ describe('MarketWorkerRuntime', () => {
       sequence: 1,
     });
     // A callback from the cancelled pre-pause timeout must also remain harmless after Resume.
-    scheduled[1]();
+    prePauseTick();
     vi.advanceTimersByTime(49);
     expect(producer.writeBatch).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
@@ -243,6 +283,7 @@ describe('MarketWorkerRuntime', () => {
       start(runtime);
       await Promise.resolve();
       vi.advanceTimersByTime(100);
+      const oldTick = scheduled[scheduled.length - 1];
       if (paused)
         runtime.receive({
           kind: ProducerCommandKind.Pause,
@@ -265,7 +306,7 @@ describe('MarketWorkerRuntime', () => {
         mode: ProducerMode.Running,
         sequence: 0,
       });
-      scheduled[2]();
+      oldTick();
       vi.advanceTimersByTime(50);
       expect(first.writeBatch).toHaveBeenCalledTimes(2);
       expect(second.reset).toHaveBeenCalledExactlyOnceWith(1, 0xffff_ffff);
@@ -291,8 +332,13 @@ describe('MarketWorkerRuntime', () => {
         .mockReturnValueOnce(secondLoad.promise);
       const { runtime, events, signals } = harness(load);
       start(runtime);
+      vi.advanceTimersByTime(6_000);
       start(runtime, 2, 2);
       expect(signals[0].aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(4_000);
+      expect(events).toEqual([]);
+      expect(signals[1].aborted).toBe(false);
       secondLoad.resolve(second);
       await Promise.resolve();
       if (completion === 'resolve') firstLoad.resolve(first);
@@ -446,8 +492,9 @@ describe('MarketWorkerRuntime', () => {
     const first = harness(async () => producer);
     start(first.runtime);
     await Promise.resolve();
+    const pendingTick = first.scheduled[first.scheduled.length - 1];
     first.runtime.dispose();
-    first.scheduled[0]();
+    pendingTick();
     vi.advanceTimersByTime(1000);
     expect(first.signals[0].aborted).toBe(true);
     expect(producer.writeBatch).not.toHaveBeenCalled();
@@ -456,6 +503,7 @@ describe('MarketWorkerRuntime', () => {
     const pending = harness(() => load.promise);
     start(pending.runtime);
     pending.runtime.dispose();
+    expect(vi.getTimerCount()).toBe(0);
     start(pending.runtime, 2, 2);
     load.resolve(producer);
     await Promise.resolve();

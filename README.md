@@ -131,7 +131,7 @@ Records contain seven unsigned 32-bit integers in [little-endian memory](https:/
 
 Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The Worker reads the returned records before the next module call and obtains a fresh view after each call. It keeps the module's memory private and publishes accumulated snapshots.
 
-The application creates the module Worker with `createMarketWorker(wasmUrl)`. The factory sends the Wasm URL as the first message. The transport then sends commands using the producer contract. Replacing a run aborts its pending download and discards late completions. Initialization and generation errors produce typed failure events that the market page displays. Applying valid settings starts a fresh run after a failure. [Worker factory](packages/market-stream/create-market-worker.ts) · [Worker implementation](packages/market-stream/worker)
+The application creates the module Worker with `createMarketWorker(wasmUrl)`. The factory sends the Wasm URL as the first message. The transport then sends commands using the producer contract. If Wasm takes longer than 10 seconds to load or the run is replaced, the Worker aborts the pending download and ignores late completions. The market page displays initialization and generation errors. To retry after a timeout, open **Settings** and select **Apply**. The same settings can be used again. [Worker factory](packages/market-stream/create-market-worker.ts) · [Worker implementation](packages/market-stream/worker)
 
 ### Producer model and memory
 
