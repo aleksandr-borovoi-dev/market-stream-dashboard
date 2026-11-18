@@ -12,12 +12,12 @@ import { provideStore } from '@ngrx/store';
 import { describe, expect, it, vi } from 'vitest';
 import { createInstrumentSnapshots } from '../instrument-snapshots';
 import { DEFAULT_PRODUCER_SETTINGS, SettingIssue } from '../settings';
+import { acknowledge, ControlledWorker } from '../testing/controlled-worker';
 import {
   ProducerCommandKind,
   ProducerEventKind,
   ProducerFailureCode,
   ProducerMode,
-  type ProducerCommand,
   type ProducerEvent,
   type ProducerSnapshot,
 } from '../worker-protocol';
@@ -27,70 +27,8 @@ import {
   MarketStreamStatus,
   MarketWorkerTransportFailureCode,
   provideMarketStreamStore,
-  type MarketWorker,
-  type MarketWorkerEventMap,
   type MarketWorkerFactory,
 } from './index';
-
-type WorkerListeners = {
-  [Kind in keyof MarketWorkerEventMap]: Set<(event: MarketWorkerEventMap[Kind]) => void>;
-};
-
-class ControlledWorker implements MarketWorker {
-  private readonly listeners: WorkerListeners = {
-    message: new Set(),
-    error: new Set(),
-    messageerror: new Set(),
-  };
-
-  public readonly commands: ProducerCommand[] = [];
-
-  public readonly terminate = vi.fn<() => void>();
-
-  public sendError: Error | null = null;
-
-  public get listenerCount(): number {
-    return Object.values(this.listeners).reduce((count, listeners) => count + listeners.size, 0);
-  }
-
-  public get messageListeners(): readonly ((event: MessageEvent<ProducerEvent>) => void)[] {
-    return [...this.listeners.message];
-  }
-
-  public addEventListener<Kind extends keyof MarketWorkerEventMap>(
-    kind: Kind,
-    listener: (event: MarketWorkerEventMap[Kind]) => void,
-  ): void {
-    this.listeners[kind].add(listener);
-  }
-
-  public removeEventListener<Kind extends keyof MarketWorkerEventMap>(
-    kind: Kind,
-    listener: (event: MarketWorkerEventMap[Kind]) => void,
-  ): void {
-    this.listeners[kind].delete(listener);
-  }
-
-  public postMessage(command: ProducerCommand): void {
-    if (this.sendError) {
-      throw this.sendError;
-    }
-    this.commands.push(command);
-  }
-
-  public emit<Kind extends keyof MarketWorkerEventMap>(
-    kind: Kind,
-    event: MarketWorkerEventMap[Kind],
-  ): void {
-    for (const listener of this.listeners[kind]) {
-      listener(event);
-    }
-  }
-
-  public receive(event: ProducerEvent): void {
-    this.emit('message', new MessageEvent('message', { data: event }));
-  }
-}
 
 @Component({ template: '' })
 class MarketRouteComponent {
@@ -110,21 +48,6 @@ function configureStore(
     ],
   });
   return TestBed.inject(MarketStreamFacade);
-}
-
-function acknowledge(
-  worker: ControlledWorker,
-  command: ProducerCommand,
-  mode: ProducerMode,
-  sequence = 0,
-): void {
-  worker.receive({
-    kind: ProducerEventKind.Acknowledged,
-    runId: command.runId,
-    commandId: command.commandId,
-    mode,
-    sequence,
-  });
 }
 
 function snapshot(
