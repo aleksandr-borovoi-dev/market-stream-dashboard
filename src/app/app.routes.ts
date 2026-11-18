@@ -6,5 +6,8 @@ export const routes: Routes = [
     path: 'market',
     loadComponent: () => import('./market/market-page').then(({ MarketPage }) => MarketPage),
   },
-  { path: 'setup', children: [] },
+  {
+    path: 'setup',
+    loadComponent: () => import('./setup/setup-page').then(({ SetupPage }) => SetupPage),
+  },
 ];

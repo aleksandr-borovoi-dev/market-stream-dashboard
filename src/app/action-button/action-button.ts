@@ -9,6 +9,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 export class ActionButton {
   readonly label = input.required<string>();
   readonly disabled = input(false);
+  readonly type = input<'button' | 'submit'>('button');
 
   readonly pressed = output<void>();
 }

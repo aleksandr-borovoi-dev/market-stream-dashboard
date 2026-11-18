@@ -17,6 +17,10 @@
   content: '';
 }
 
+li + li .current::after {
+  inset-inline-start: 14px;
+}
+
 @media (min-height: 540px) {
   :host {
     block-size: 100dvh;

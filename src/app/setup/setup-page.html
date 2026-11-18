@@ -1,0 +1,73 @@
+<h1
+  class="m-0 mb-[22px] text-[34px] leading-[1.06] font-[725] tracking-[-0.045em] sm:mb-7 sm:text-[44px] sm:leading-[1.12]"
+>
+  Producer Settings
+</h1>
+
+<div class="grid max-w-4xl items-start gap-5 md:grid-cols-3">
+  <form
+    class="rounded-[14px] border border-border bg-card shadow-card md:col-span-2"
+    [formRoot]="settingsForm"
+    aria-label="Producer settings"
+  >
+    <div class="grid gap-5 p-5 sm:p-6">
+      @for (field of fields; track field.key) {
+        @let fieldState = settingsForm[field.key]();
+        @let error =
+          fieldState.touched() && fieldState.invalid() ? fieldState.errors()[0] : undefined;
+        @let range = limits[field.key];
+
+        <div>
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <label class="text-sm font-semibold" [for]="field.key">{{ field.label }}</label>
+              <p class="m-0 mt-1 text-xs text-muted-foreground" [id]="field.key + '-range'">
+                {{ range.minimum | number }} to {{ range.maximum | number }}
+              </p>
+            </div>
+            <input
+              class="h-11 w-24 shrink-0 rounded-lg border border-border bg-background px-3 text-right font-sans text-base text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-[invalid=true]:border-error-border sm:w-28"
+              [id]="field.key"
+              type="text"
+              inputmode="numeric"
+              [formField]="settingsForm[field.key]"
+              [attr.aria-invalid]="!!error"
+              [attr.aria-describedby]="
+                field.key + '-range' + (error ? ' ' + field.key + '-error' : '')
+              "
+            />
+          </div>
+
+          @if (error) {
+            <p class="m-0 mt-2 text-sm text-error-foreground" [id]="field.key + '-error'">
+              {{ error.message }}
+            </p>
+          }
+        </div>
+      }
+    </div>
+
+    <div
+      class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-6"
+    >
+      <p class="m-0 max-w-xs text-sm text-muted-foreground">
+        Apply starts a new run and resets accumulated totals.
+      </p>
+      <app-action-button label="Apply" type="submit" [disabled]="settingsForm().submitting()" />
+    </div>
+  </form>
+
+  <aside class="rounded-[14px] border border-border bg-card p-5 shadow-card">
+    <h2 class="m-0 text-base font-semibold">Applied settings</h2>
+    <dl class="m-0 mt-4 grid gap-3 text-sm">
+      @for (field of fields; track field.key) {
+        <div class="flex items-baseline justify-between gap-3">
+          <dt class="text-muted-foreground">{{ field.label }}</dt>
+          <dd class="m-0 font-mono font-semibold tabular-nums">
+            {{ appliedSettings()[field.key] | number }}
+          </dd>
+        </div>
+      }
+    </dl>
+  </aside>
+</div>

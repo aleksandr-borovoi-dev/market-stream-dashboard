@@ -1,6 +1,6 @@
 <button
   class="min-h-11 min-w-[108px] cursor-pointer rounded-lg border border-transparent bg-primary px-3.5 font-sans text-[14px] leading-none font-[680] text-primary-foreground enabled:hover:bg-primary-hover enabled:active:bg-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ring disabled:cursor-default disabled:border-border disabled:bg-control-disabled disabled:text-control-disabled-foreground compact:min-w-[94px]"
-  type="button"
+  [type]="type()"
   [disabled]="disabled()"
   (click)="pressed.emit()"
 >
