@@ -1,0 +1,24 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100dvh;
+}
+
+.frame {
+  inline-size: min(1120px, 100% - 2 * var(--page-gutter));
+}
+
+.current::after {
+  position: absolute;
+  inset: auto 12px -1px 0;
+  block-size: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--color-primary-indicator);
+  content: '';
+}
+
+@media (min-height: 540px) {
+  :host {
+    block-size: 100dvh;
+  }
+}

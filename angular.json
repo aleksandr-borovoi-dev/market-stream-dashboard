@@ -26,6 +26,7 @@
             "tsConfig": "tsconfig.app.json",
             "webWorkerTsConfig": "tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
+            "styles": ["src/styles.css"],
             "assets": [
               {
                 "glob": "**/*",

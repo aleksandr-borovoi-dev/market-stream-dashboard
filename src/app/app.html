@@ -1,5 +1,28 @@
-<main>
-  <h1>Market Stream Dashboard</h1>
-  <p>Market data simulation workspace.</p>
+<header class="shrink-0 border-b border-border bg-card">
+  <nav class="frame mx-auto" aria-label="Main navigation">
+    <ul class="m-0 flex min-h-[65px] list-none gap-1.5 p-0 compact:min-h-[58px]">
+      <li class="flex">
+        <a
+          class="relative flex min-h-11 items-center pe-3.5 text-[14px] font-[620] text-muted-foreground no-underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-ring [&.current]:font-[710] [&.current]:text-primary"
+          routerLink="/market"
+          routerLinkActive="current"
+          [routerLinkActiveOptions]="{ exact: true }"
+          ariaCurrentWhenActive="page"
+          >Market</a
+        >
+      </li>
+      <li class="flex">
+        <span
+          class="flex min-h-11 items-center px-3.5 text-[14px] font-[620] text-muted-foreground"
+          role="link"
+          aria-disabled="true"
+          >Settings</span
+        >
+      </li>
+    </ul>
+  </nav>
+</header>
+
+<main class="frame mx-auto flex min-h-0 flex-col pt-[52px] pb-[45px] compact:pt-9">
   <router-outlet />
 </main>

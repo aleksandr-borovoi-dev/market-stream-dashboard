@@ -1,0 +1,47 @@
+<h1
+  class="market-title m-0 mb-7 text-[44px] leading-[1.12] font-[725] tracking-[-0.045em] compact:mb-[22px] compact:leading-[1.06]"
+>
+  Market Stream Dashboard
+</h1>
+
+<section
+  class="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-border bg-card shadow-card"
+  aria-label="Market stream"
+>
+  <div
+    class="flex min-h-[72px] shrink-0 items-center justify-between gap-3 py-3 ps-6 pe-5 compact:py-[13px] compact:ps-[15px] compact:pe-[13px]"
+  >
+    <div
+      class="flex min-w-0 items-center gap-3 compact:flex-wrap compact:gap-x-2 compact:gap-y-[3px]"
+    >
+      <span class="text-[14px] font-[690] compact:text-[13px]">Producer</span>
+      <span
+        class="inline-flex min-h-[26px] items-center rounded-2xl bg-status-waiting px-2.5 py-[3px] text-[12px] leading-[1.25] font-[690] whitespace-nowrap text-status-waiting-foreground data-[appearance=running]:bg-status-running data-[appearance=running]:text-status-running-foreground data-[appearance=error]:bg-status-error data-[appearance=error]:text-status-error-foreground compact:min-h-6 compact:px-2"
+        [attr.data-appearance]="confirmedStatus().appearance"
+        role="status"
+      >
+        {{ confirmedStatus().label }}
+      </span>
+      <span
+        class="border-s border-border ps-3 text-[13px] whitespace-nowrap text-muted-foreground tabular-nums compact:basis-full compact:border-s-0 compact:ps-0 compact:text-[12px] compact:whitespace-normal"
+      >
+        <span class="sr-only">Configured rate </span>{{ configuredRate() }} updates/s
+      </span>
+    </div>
+    <app-action-button
+      [label]="actionLabel()"
+      [disabled]="actionDisabled()"
+      (pressed)="toggleProducer()"
+    />
+  </div>
+
+  @if (error(); as failure) {
+    <p
+      class="m-0 shrink-0 border-t border-error-border bg-error-surface px-6 py-3.5 text-[14px] leading-[1.45] wrap-anywhere text-error-foreground compact:px-[15px]"
+      role="alert"
+      [textContent]="failure.message"
+    ></p>
+  }
+
+  <app-instrument-table [snapshots]="snapshots()" />
+</section>

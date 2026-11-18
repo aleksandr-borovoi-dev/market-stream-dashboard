@@ -1,0 +1,84 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+
+@source './app';
+
+@theme static {
+  --color-background: #f4f7f6;
+  --color-card: #fff;
+  --color-foreground: #152923;
+  --color-secondary-foreground: #465c55;
+  --color-muted-foreground: #526760;
+  --color-border: #d3e0db;
+  --color-border-subtle: #e1e9e6;
+  --color-primary: #075b4e;
+  --color-primary-foreground: #fff;
+  --color-primary-hover: #094c41;
+  --color-primary-pressed: #0b3d34;
+  --color-primary-indicator: #147d69;
+  --color-ring: #087967;
+
+  --color-control-disabled: #ebf0ee;
+  --color-control-disabled-foreground: #4b635a;
+  --color-status-running: #e3f3eb;
+  --color-status-running-foreground: #176249;
+  --color-status-waiting: #f8edd9;
+  --color-status-waiting-foreground: #7a4b1e;
+  --color-status-error: #f9e8e8;
+  --color-status-error-foreground: #953d45;
+  --color-error-surface: #fff3f2;
+  --color-error-foreground: #842f39;
+  --color-error-border: #eed7d8;
+
+  --color-table-heading: #eaf1ee;
+  --color-table-heading-foreground: #3b554b;
+  --color-table-ticker: #173f35;
+  --color-table-band: #f8fbfa;
+  --color-table-hover: #eef7f2;
+  --color-table-footer: #f1f6f4;
+  --color-positive-foreground: #205e4d;
+  --color-negative-foreground: #8f3c49;
+  --color-scroll-track: #e7efeb;
+  --color-scroll-thumb: #638276;
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --shadow-card: 0 2px 4px #162e2510, 0 10px 24px #162e2507;
+}
+
+@custom-variant compact {
+  @media (max-width: 700px) {
+    @slot;
+  }
+}
+
+@custom-variant narrow {
+  @media (max-width: 556px) {
+    @slot;
+  }
+}
+
+:root {
+  --page-gutter: 36px;
+  color-scheme: light;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --page-gutter: 20px;
+  }
+}
