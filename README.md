@@ -1,21 +1,37 @@
 # Market Stream Dashboard
 
-Project for the Realtime Fintech Dashboard assignment: an Angular application with a live market dashboard and producer settings. The assignment requires simulated financial data to be generated in WebAssembly inside a Web Worker.
+An Angular dashboard for simulated trades and quotes. A seeded AssemblyScript WebAssembly module generates market updates inside a Web Worker, and the dashboard shows cumulative metrics for the active run.
 
-The original requirements are in [Senior Frontend Developer Task.docx](docs/Senior%20Frontend%20Developer%20Task.docx).
+[Live demo](https://market-stream-dashboard.vercel.app) · [GitHub repository](https://github.com/aleksandr-borovoi-dev/market-stream-dashboard) · [Original assignment](docs/Senior%20Frontend%20Developer%20Task.docx)
 
-The current version starts a seeded AssemblyScript producer inside a module Web Worker and connects it to an application-scoped NgRx feature store. The `/market` and `/setup` routes show the shell until their pages are implemented.
+## Try the demo
 
-Live demo: [market-stream-dashboard.vercel.app](https://market-stream-dashboard.vercel.app).
+1. Open the table and watch trades update the price, spread, volume, VWAP, and order-book imbalance for each instrument. [Market](https://market-stream-dashboard.vercel.app/market)
+2. Select **Pause**, visit **Settings**, and return to **Market**. The table stays paused with the same totals. Select **Resume** to continue the run.
+3. Pause again, edit the settings, and select **Apply**. A fresh run starts with the new settings and empty totals. [Producer settings](https://market-stream-dashboard.vercel.app/setup)
 
-Requires Node.js 24.15.0 and npm 11.12.1. The Node version is recorded in `.nvmrc`.
+| Setting           | Default | Allowed range |
+| ----------------- | ------: | ------------- |
+| Instrument count  |       5 | 1–50          |
+| Updates per batch |     100 | 1–1,000       |
+| Batch interval    |  500 ms | 50–2,000 ms   |
+
+The nominal rate is `updatesPerBatch * 1000 / intervalMs` across all instruments. The defaults request 200 updates per second.
+
+## Run locally
+
+Use Node.js 24.15.0 and npm 11.12.1. The Node version is recorded in `.nvmrc`.
 
 ```sh
+git clone https://github.com/aleksandr-borovoi-dev/market-stream-dashboard.git
+cd market-stream-dashboard
 npm ci
 npm start
 ```
 
-Open http://localhost:4200.
+The development server listens on port 4200. [Local dashboard](http://127.0.0.1:4200)
+
+## Checks and build
 
 ```sh
 npm run check          # Formatting, lint, TypeScript, unit tests and production build
@@ -31,27 +47,57 @@ npm run build
 npm run build:wasm     # Compile assembly/producer.ts to public/market-stream.wasm
 ```
 
-Vitest runs the unit tests in `src/` and `packages/`. Settings tests cover inclusive limits, invalid and missing inputs, independent field errors, draft isolation and the requested total update rate. Metric tests cover the assignment example, unavailable values, instrument isolation, immutable snapshots, large integer totals and rounding at presentation. Worker tests use controlled clocks and loads to check pause/resume, replacement, stale commands and completions, cleanup, loading errors and memory decoding. Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade/quote invariants and bounded memory. Both test suites are part of `verify`, so they also run in GitHub Actions and the Vercel build. `typecheck` also checks the Worker separately with ES2022/WebWorker types, without DOM types.
+Vitest covers settings validation, the assignment's worked metric example, unavailable values, instrument isolation, large integer totals, and rounding. Worker tests use controlled clocks and loads to verify scheduling, run replacement, failure handling, cleanup, and memory decoding. Integration tests exercise the real Angular routes, Signal Forms, and NgRx with a controlled Worker channel. They verify navigation during a paused run and late replies after overlapping Apply submissions. [Application integration tests](src/app/app.integration.spec.ts)
 
-`start`, `build` and `watch` compile Wasm before starting Angular. After editing AssemblyScript during a running development session, run `npm run build:wasm` again. The generated `.wasm` is ignored by Git and copied from `public/` into the Angular build; only its source and compiler configuration are committed.
+Node's test runner instantiates the compiled Wasm module and checks its exports, input limits, deterministic resets, batch continuity, trade and quote invariants, and bounded memory. Both suites run as part of `verify`. The `typecheck` command checks the Worker separately with ES2022 and Web Worker types. [Wasm tests](tests/wasm-producer.test.mjs)
 
-The production output is written to `dist/market-stream-dashboard/browser`.
+`start`, `build` and `watch` compile Wasm before starting Angular. After editing AssemblyScript during a running development session, run `npm run build:wasm` again. The Angular build copies the generated module from `public/` into `dist/market-stream-dashboard/browser`. Git tracks the AssemblyScript source and compiler configuration.
 
-Pushes to `main` run the `Checks` workflow in GitHub Actions. It uses the Node version from `.nvmrc`, npm 11.12.1, a clean dependency installation, and `npm run check`.
+### Maximum-rate check
 
-Vercel Hobby deploys the connected repository's `main` branch. Its build checks formatting and runs `npm run verify` before publishing, so a failed application check stops that deployment. Vercel's processed `vercel.json` is excluded from formatting during deployment; the original file is still checked locally and in GitHub Actions. The root URL and two page routes load `index.html`; static files are served directly. An explicit final 404 rule prevents the Angular preset's fallback from serving HTML for missing assets.
+A 60-second run of the local production build in headless Chrome processed **1,114,000 updates** at 50 instruments, 1,000 updates per batch, and a 50 ms interval. The settings request 20,000 updates per second. The observed rate was about 18,600 updates per second because the Worker schedules the interval after processing each batch. A replay with the same Wasm seed matched the displayed volume and VWAP for all 50 instruments. The table remained scrollable, Pause and Resume worked with one Worker, and the measurement recorded zero main-thread tasks longer than 50 ms.
+
+## Deployment
+
+Pushes to `main` trigger the GitHub Actions `Checks` workflow. It installs dependencies with `npm ci` using the Node version from `.nvmrc` and npm 11.12.1, then runs `npm run check`. [Workflow](.github/workflows/check.yml)
+
+Vercel builds the same branch independently. It checks formatting and runs `npm run verify` before publishing. The root URL and the two page routes load `index.html`. Requests for the compiled Wasm and other static files serve those assets directly, and missing assets return 404. [Vercel configuration](vercel.json)
+
+## Data flow
+
+```mermaid
+flowchart LR
+    Angular["Angular pages"] -->|Apply, Pause, Resume| NgRx["NgRx store"]
+    NgRx -->|Producer commands| Worker["Web Worker"]
+    Worker -->|reset and writeBatch| Wasm["AssemblyScript Wasm"]
+    Wasm -->|Trade records| Worker
+    Worker -->|Cumulative snapshots| NgRx
+    NgRx -->|Facade signals| Angular
+```
+
+The Worker reads the Wasm buffer, counts every trade, and sends one snapshot per batch. Each snapshot holds one summary per instrument. This keeps retained state proportional to the instrument count and leaves generation and aggregation off the main thread. Angular tracks rows by instrument index, and the application-scoped store keeps the active run available to both pages.
 
 ## Simulation contracts
 
 [`packages/market-stream/contracts.ts`](packages/market-stream/contracts.ts) is the public entry point for plain TypeScript models and validation. It has no Angular or NgRx dependency and can be imported by the UI, the Worker and tests. There is no separate package build or workspace framework.
 
-Settings use numeric values: `instrumentCount` (default 5, range 1–50), `updatesPerBatch` (100, 1–1000) and `intervalMs` (500, 50–2000). Validation accepts only integers, reports errors per field, and returns a separate settings object without coercing strings. The requested rate is `updatesPerBatch * 1000 / intervalMs` across all instruments, independent of instrument count.
+Settings use the numeric fields `instrumentCount`, `updatesPerBatch` and `intervalMs`. Validation accepts integers within the configured ranges, reports errors per field, and returns a separate settings object.
 
 ### Market calculations
 
 `createInstrumentSnapshots(count)` initializes a run. `accumulateMarketBatch(snapshots, updates)` returns a new snapshot array, retaining each instrument's latest update and cumulative totals. Previous snapshots and inputs stay unchanged; every supplied trade counts, including identical trades. Market updates must satisfy the data contract, and an unconfigured instrument index is rejected.
 
-`deriveMarketMetrics(snapshot)` returns the five dashboard metrics. Volume and traded value use `bigint`, with quantities converted before multiplication. VWAP remains the exact `{ numeratorCents, denominator }` relation until display. Empty data produces zero volume and unavailable metrics; a zero book denominator produces unavailable imbalance.
+`deriveMarketMetrics(snapshot)` returns the five dashboard metrics.
+
+| Metric               | Calculation                                                                |
+| -------------------- | -------------------------------------------------------------------------- |
+| Last price           | Price of the latest trade                                                  |
+| Spread               | Latest ask price minus latest bid price                                    |
+| Volume               | Sum of trade quantities in the current run                                 |
+| VWAP                 | Sum of trade price × quantity divided by total volume                      |
+| Order-book imbalance | Latest bid quantity minus ask quantity, divided by their combined quantity |
+
+Volume and traded value use `bigint`. Quantities are converted before multiplication, and VWAP remains an exact ratio of traded value in cents to volume until display. Empty data produces zero volume and unavailable metrics. A zero book denominator produces unavailable imbalance.
 
 `formatUsd`, `formatVolume` and `formatImbalance` use fixed English dollar presentation. Currency rounds exact ratios to the nearest cent, with half-cent ties rounded upward. USD and volume formatting preserve large integer values; imbalance uses two decimals without percent scaling. Unavailable values display `—`. These helpers have no Angular dependency and are available through `contracts.ts`.
 
@@ -60,12 +106,12 @@ Settings use numeric values: `instrumentCount` (default 5, range 1–50), `updat
 The message types define these lifecycle rules for the Worker and the application:
 
 - `start` carries validated settings and a 32-bit seed. Every start, including Apply while paused, creates a new run with empty totals and starts generation. Draft edits do not send commands; navigation keeps the same producer owner.
-- Every command has a positive, increasing `commandId`. Each new run also gets a new `runId`. Commands and acknowledgements must match the active run; acknowledgements also match the pending command. The owner separately rejects messages from a replaced Worker instance.
+- Every command has a positive, increasing `commandId`. Each new run also gets a new `runId`. Pause and Resume target the active run. An acknowledgement matches both the active run and the pending command. The owner separately rejects messages from a replaced Worker instance.
 - Snapshots have an increasing `sequence` starting at 1 for each run. Older or repeated snapshots, statuses and errors from an earlier run cannot replace current state. Snapshots contain cumulative totals, so the receiver replaces them instead of adding them again.
 - Pause publishes all completed work before its acknowledgement. Resume preserves Wasm state and totals and schedules the next batch after the configured interval, without catching up for paused time. Contradictory pause/resume commands wait for the pending acknowledgement; a new start can replace a pending run.
 - Each instrument retains its latest trade and quote, cumulative volume and `sum(priceCents * tradeQuantity)`. Before its first trade, the latest update is `null` and both totals are `0n`. The two cumulative totals use `bigint`; snapshots travel by [structured clone](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), rather than JSON. No complete trade history is kept.
 
-`provideMarketStreamStore()` registers the market feature once at Angular bootstrap and dispatches Start with the default settings. `MarketStreamFacade` dispatches Apply, Pause and Resume through `MarketStreamActions`. Effects send commands through the Worker transport and convert incoming messages into outcome actions. The reducer accepts current results and replaces the cumulative snapshot. Selectors expose settings, status, the pending command, snapshots and errors as facade signals. The transport removes listeners and terminates the Worker when the application is destroyed. Store tests use a controlled Worker channel to exercise acknowledgements, stale messages, failures and cleanup.
+`provideMarketStreamStore()` registers the market feature once at Angular bootstrap and dispatches Start with the default settings. `MarketStreamFacade` dispatches Apply, Pause and Resume through `MarketStreamActions`. Effects send commands through the Worker transport and convert incoming messages into outcome actions. The reducer accepts current results and replaces the cumulative snapshot. Selectors expose settings, status, the pending command, snapshots and errors as facade signals. The transport removes listeners and terminates the Worker when the application is destroyed. [NgRx feature](packages/market-stream/store)
 
 ### Worker and Wasm
 
@@ -85,11 +131,7 @@ Records contain seven unsigned 32-bit integers in [little-endian memory](https:/
 
 Each record occupies 28 bytes; the maximum batch needs 28,000 bytes. The Worker reads the returned records before the next module call and obtains a fresh view after each call. It keeps the module's memory private and publishes accumulated snapshots.
 
-### Running the Worker
-
-The module Worker implementation is in `packages/market-stream/worker/`. Create one Worker with `createMarketWorker(wasmUrl)` from `packages/market-stream/create-market-worker.ts`, supplying a URL pointing to the deployed Wasm file. Retain it across navigation and terminate it when its owner is destroyed. The factory sends the URL as a private first message; subsequent messages use the public producer contract.
-
-Send the public Start/Pause/Resume commands with increasing command/run identities and consume cumulative bigint snapshots by replacement. Start resets the Wasm instance and totals. Pause publishes finished work before acknowledging; Resume waits one configured interval and preserves state without catch-up. Replacing a run aborts its pending download and ignores late completions. Initialization and generation errors produce typed failure events. Worker lifecycle, loading and decoding specs live beside the implementation; `tsconfig.worker.json` checks Worker types separately from DOM application types.
+The application creates the module Worker with `createMarketWorker(wasmUrl)`. The factory sends the Wasm URL as the first message. The transport then sends commands using the producer contract. Replacing a run aborts its pending download and discards late completions. Initialization and generation errors produce typed failure events that the market page displays. Applying valid settings starts a fresh run after a failure. [Worker factory](packages/market-stream/create-market-worker.ts) · [Worker implementation](packages/market-stream/worker)
 
 ### Producer model and memory
 
